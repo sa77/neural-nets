@@ -1,0 +1,107 @@
+# tensorflow intro
+
+- library by google
+
+- install via pip => once we have pip, we can create an environment variable that points to the download URL of tensorflow
+export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-0.10.0rc0-py3-none-any.whl
+pip install --upgrade $TF_BINARY_URL
+
+- imort MNIST dataset
+import input_data
+# input_data class is a standard python class that downloads the dataset, splits into training and testing data and formats for our use later on
+mnist = input_data.read_data_sets('/tmp/data/', one_hot=True)
+
+- import tensorflow
+import tensorflow as tf
+
+- set hyper parameters (tuning knobs) for our model
+
+# set parameters
+
+# how fast we want to update our weights
+# => if it is too big, our model might skip the optimal solution
+# => if it is too small, we might need too many iterations to converge on the best results, 0.01 is a decent learning rate
+learning_rate = 0.1
+training_iteration = 30
+batch_size = 100
+display_step = 2
+
+- now create a model : in tf, a model is represented as a data flow graph and the graph contains a set of nodes called operations
+#  each operation inputs a tensor and ouputs a tensor as well
+#  a tensor is how data is represented in tensorflow => a tensor is a multidimensional arrays number that flows between operations
+
+- we start by making placeholder operations - a placeholder is just a variable that we will assign data to at a later date, it is never initialized and contains no data
+# - we'll define the type and shape of our data as the parameters
+x = tf.placeholder("float", [None, 784]) # mnist data image of shape 28x28 = 784 => 2d tensor of numbers
+y = tf.placeholder("float", [None, 10]) # 0-9 digits recognition => 10 classes
+
+# 784 is a dimensionality of a single flattened MNIST image - flattening an image means to convert a 2D array into 1D array by unstacking the row and lining them up
+# the output is a 2D tensor where each row is a one hot 10 dimensional vector showing which digit class the corresponding MNIST image belongs to
+
+- define weights and biases
+# the weights are the probabilities how data flows in the graph and it'll be updated continiously during trainging
+# bias lets to shift our regression line to better fit the data
+w = tf.Variable(tf.zeros([784, 10]))
+b = tf.Variable(tf.zeros(10))
+
+- then we'll create a named scope => scopes help us organize nodes in the graph visualizer called tensor board which will view at the end
+
+# 1st scope - implement our model - logistic regression by multiplying input images X by weight matrix W and adding the bias B
+# then create summary operations to later visualize distributions of our weights and biases
+with tf.name_scopes("Wx_b") as scope:
+    model = tf.nn.softmax(tf.matmul(x, W) + B)
+
+# add summary operations to collect data
+w_h = tf.histogram_summary("weights", W)
+b_h = tf.histogram_summary("biases", b)
+
+# second scope - cost function: the cost function helps up minimize our error during training and we'll use the popular cross-entropy function
+with tf.name_scopes("cost_function") as scope:
+    # minimize error using cross entropy
+    # cross entropy
+    cost_function = -tf.reduce_sum(y*tf.log(model))
+    # create scalar_summary to monitor cost function during training
+    tf.scalar_summary("cost_function", cost_function)
+
+
+#  third and last scope is called train
+# it'll create our optimization function that makes our model improve during training
+with tf.name_scopes("train") as scope:
+    # we'll use the popular gradient descent algorithm which takes our learning rate as a parameter for pacing and our cost function has a parameter to help mimimize the error
+    # gradient descent
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost_function)
+
+# now that we have our graph built, we'll initialize all of our variables and then merge all of our summaries into single operator
+# Initializing the variables
+init = tf.initialize_all_variables()
+
+# merge all summaries into single variable
+merged_summary_op = tf.merge_all_summaries()
+
+# launch the graph -> that initializes a session which lets us execute our data flow graph
+with tf.Session() as sess:
+    sess.run(init)
+
+    # set logs writer to the folder tmp/tensorflow_logs
+    summary_writer = tf.train.SummaryWriter('../logs', graph_def=sess.graph_def)
+
+    # training cycle
+    for iteration in range(training_iteration):
+        # to show that our model is improving during trainging
+        avg_cost = 0
+        total_batch = init(mnist.train.num_examples/batch_size)
+        # loop over all batches
+        for i in range(total_batch):
+            batch_xs, batch_ys = mnist.train.next_batch(batch_size)
+            # fit training using batch data
+            sess.run(optimizer, feed_dict={x: batch_xs, y: batch_ys})
+            # compute average loss
+            avg_cost += sess.run(cost_function, feed_dict={x: batch_xs, y: batch_ys})/total_batch
+            # write logs for each iteration
+            summary_str = sess.run(merged_summary_op, feed_dict={x: batch_xs, y: batch_ys})
+            summary_writer.add_summary(summary_str, iteration* total_batch + i)
+        # display logs per iteration step
+        if iteration % display_step == 0:
+            print("Iteration %0.4d" % (iteration + 1), "cost = {:.9f}".format(avg_cost))
+
+# we can then visualize our graph in tensorboard
